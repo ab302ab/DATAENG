@@ -1,0 +1,152 @@
+# 1.File check module
+
+import pandas as pd
+import re
+
+# Columns that should not be null
+NON_NULL_COLUMNS = ['name', 'phone', 'location']
+
+def clean_phone(phone):
+    """Clean phone number by removing spaces and special characters."""
+    return re.sub(r'[^0-9]', '', str(phone))
+
+def validate_data(df):
+    """Perform data quality checks and return cleaned and bad data."""
+    # Clean phone number
+    df['phone'] = df['phone'].apply(clean_phone)
+
+    # Remove records where essential fields are null
+    bad_records = df[df[NON_NULL_COLUMNS].isnull().any(axis=1)]
+    clean_records = df.dropna(subset=NON_NULL_COLUMNS)
+
+    # Further clean address and reviews_list
+    clean_records['address'] = clean_records['address'].str.replace(r'[^a-zA-Z0-9\s]', '', regex=True)
+    clean_records['reviews_list'] = clean_records['reviews_list'].str.replace(r'[^a-zA-Z0-9\s]', '', regex=True)
+
+    return clean_records, bad_records
+
+# Load the file
+file_path = 'data file 20210527182730.csv'
+df = pd.read_csv(file_path)
+
+# Perform validation
+clean_records, bad_records = validate_data(df)
+
+# Save clean and bad records to separate files
+clean_records.to_csv('clean_data.csv', index=False)
+bad_records.to_csv('bad_data.csv', index=False)
+
+
+
+# 2.Data quality check
+
+import pandas as pd
+import re
+import os
+
+# Directory to store the output files
+CLEANED_DATA_DIR = "cleaned_data"
+BAD_DATA_DIR = "bad_data"
+
+# Ensure that directories for storing cleaned and bad data exist
+os.makedirs(CLEANED_DATA_DIR, exist_ok=True)
+os.makedirs(BAD_DATA_DIR, exist_ok=True)
+
+# Define required fields
+REQUIRED_FIELDS = ['name', 'phone', 'location']
+
+def clean_phone_number(phone):
+    """Clean and validate phone numbers by removing '+' or spaces, and ensuring correct format."""
+    if pd.isnull(phone):
+        return None
+    
+    # Remove any non-numeric characters (including spaces and '+')
+    phone = re.sub(r'\D', '', str(phone))
+    
+    # Check if the phone number length is valid (for example, assume 10 digits for this case)
+    if len(phone) == 10:
+        return phone
+    else:
+        return None
+
+def check_required_fields(row):
+    """Check if required fields are not null."""
+    for field in REQUIRED_FIELDS:
+        if pd.isnull(row[field]) or row[field] == "":
+            return False
+    return True
+
+def clean_descriptive_fields(field_data):
+    """Clean descriptive fields by removing special characters and junk characters."""
+    if pd.isnull(field_data):
+        return field_data
+    # Remove special characters (retain alphanumeric and basic punctuation)
+    cleaned_data = re.sub(r'[^\w\s,]', '', str(field_data))
+    return cleaned_data
+
+def split_phone_number(phone):
+    """Split the phone number into two fields for readability."""
+    if phone and len(phone) == 10:
+        return phone[:5], phone[5:]  # Split into first 5 digits and last 5 digits
+    return phone, None
+
+def data_quality_check(file_path):
+    """Perform data quality checks and clean data accordingly."""
+    # Read the CSV file
+    data = pd.read_csv(file_path)
+    
+    # Lists to store valid and invalid rows
+    valid_rows = []
+    invalid_rows = []
+    invalid_row_details = []
+
+    for idx, row in data.iterrows():
+        # Step 1: Clean and validate phone number
+        row['phone'] = clean_phone_number(row['phone'])
+        
+        # Step 2: Check for null values in required fields
+        if not check_required_fields(row):
+            invalid_rows.append(row)
+            invalid_row_details.append({'row_num': idx + 1, 'issue': 'null_field'})
+            continue
+        
+        # Step 3: Clean descriptive fields (address, reviews_list)
+        row['address'] = clean_descriptive_fields(row.get('address'))
+        row['reviews_list'] = clean_descriptive_fields(row.get('reviews_list'))
+        
+        # Step 4: Split phone number into two fields
+        row['contact_number_1'], row['contact_number_2'] = split_phone_number(row['phone'])
+        
+        # If everything is valid, add to valid_rows
+        valid_rows.append(row)
+    
+    # Convert lists of valid and invalid rows to DataFrames
+    valid_data = pd.DataFrame(valid_rows)
+    invalid_data = pd.DataFrame(invalid_rows)
+
+    # Save valid data to a new CSV
+    valid_file_path = os.path.join(CLEANED_DATA_DIR, f'cleaned_{os.path.basename(file_path)}')
+    valid_data.to_csv(valid_file_path, index=False)
+    
+    # Save invalid data to a bad file
+    if not invalid_data.empty:
+        bad_file_path = os.path.join(BAD_DATA_DIR, f'bad_{os.path.basename(file_path)}')
+        invalid_data.to_csv(bad_file_path, index=False)
+        
+        # Optionally save metadata (issue types and row numbers)
+        metadata = pd.DataFrame(invalid_row_details)
+        metadata_file_path = os.path.join(BAD_DATA_DIR, f'metadata_{os.path.basename(file_path)}.csv')
+        metadata.to_csv(metadata_file_path, index=False)
+    
+    print(f"Cleaned data saved to: {valid_file_path}")
+    if not invalid_data.empty:
+        print(f"Bad data saved to: {bad_file_path}")
+        print(f"Metadata saved to: {metadata_file_path}")
+
+# Sample usage
+if _name_ == "_main_":
+    # Path to the daily file
+    file_path = 'data file 20210527182730.csv'
+    
+    # Perform the data quality check
+    data_quality_check(file_path)
